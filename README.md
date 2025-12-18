@@ -1,174 +1,143 @@
-# ComfyUI Nano Banana Node
+# ComfyUI-Banana-Node
 
-A custom node for ComfyUI that provides seamless integration with Google Vertex AI REST API format, featuring dynamic image inputs and chat mode functionality.
+A custom node for ComfyUI that uses Google's Gemini 2.5 Flash Image and Gemini 3 Pro Image Preview APIs to generate images.
 
-This project is derived from the design and structural patterns of the [ComfyUI-Openrouter_node](https://github.com/gabe-init/ComfyUI-Openrouter_node) project by **@gabe-init**, from which elements such as dynamic image input handling and general node architecture principles were adapted. The original work is licensed under the MIT Licence, and its licence is included in this repository in accordance with its terms.
+New: Online invocation
+[Invincible banana2 🍌 0.2/image](https://www.runninghub.ai/post/1991513043091857410/?inviteCode=rh-v1118)
+[Tutorial](https://www.bilibili.com/video/BV1ByU5BbEqS/?share_source=copy_web&vd_source=e82febcd63de4c3684cb2d737bbe5050)
 
-This project is an independent implementation focused solely on Nano Banana and Vertex AI integration and does not provide OpenRouter functionality.
-
+- Supports resolution scaling for 1K, 2K, 4K, 8K, etc.
 ## Features
 
-- **Dynamic Image Inputs** - Automatically adds new image input slots as you connect images (up to 10)
-- **Image Generation Support** - Generate images with Gemini/Nano Banana models through Vertex API
-- **Chat Mode** - Maintain conversation context across multiple messages with automatic session management
-- **Multi-Image Support** - Send multiple images in a single request to supported Gemini models
-- **Flexible Configuration** - Use environment variables for easy endpoint and model configuration
+- Uses Google Gemini 2.5 Flash Image Preview model
+- Supports multiple input images
+- Customizable prompts
+- Multiple output aspect ratios
+- Complete error handling and logging
+- New: Image Ratio Adjuster node — supports crop, pad, stretch
+- New: Resolution Scaler node — supports 1K, 2K, 4K, 8K resolution scaling
 
 ## Installation
 
-1. Clone this repository into your ComfyUI custom_nodes folder:
+1. Clone this repository into your ComfyUI custom nodes directory:
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/gabe-init/ComfyUI-Openrouter_node
+git clone https://github.com/your-username/ComfyUI-Banana-Node.git
 ```
 
-2. Install the required dependencies:
+2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+cd ComfyUI-Banana-Node
+pip install google-generativeai pillow numpy torch
 ```
 
-3. Copy `.env.template` to `.env` and configure:
-```bash
-cp .env.template .env
-```
+3. Get your API key:
+- Visit Google AI Studio: https://aistudio.google.com/app/apikey
+- Bind a Visa or MasterCard to receive $300 in free credits
 
-4. Edit `.env` with your configuration:
-
-   **For own proxy (simple endpoint):**
-   ```env
-   VERTEX_AI_API_KEY=your_api_key_here
-   VERTEX_AI_USE_SIMPLE_ENDPOINT=true
-   VERTEX_AI_ENDPOINT=https://your-nano-banana-endpoint.com
-   VERTEX_AI_MODELS=gemini-2.5-flash-image,gemini-3-pro-image-preview
-   ```
-
-   **For direct Vertex AI access (standard endpoint):**
-   ```env
-   VERTEX_AI_API_KEY=your_vertex_ai_api_key
-   VERTEX_AI_USE_SIMPLE_ENDPOINT=false
-   VERTEX_AI_PROJECT=your-gcp-project-id
-   VERTEX_AI_LOCATION=your-endpoint-location
-   VERTEX_AI_MODELS=gemini-2.5-flash-image,gemini-3-pro-image-preview
-   ```
-
-5. Restart ComfyUI
+4. Restart ComfyUI
 
 ## Usage
 
-The Nano Banana node provides a simple interface to interact with Gemini models through the Vertex AI proxy service.
-
-### Inputs
-
-#### Required Inputs:
-
-- **system_prompt**: The system prompt that sets the behavior of the LLM
-- **user_message_box**: The user message to send to the model
-- **model**: The Gemini model to use (configured via environment variables)
-- **image_generation**: Enable image generation for supported models
-- **temperature**: Controls the randomness of output (0.0 to 2.0)
-- **chat_mode**: Enable conversation mode to maintain context across messages
-
-#### Optional Inputs:
-
-- **image_1** through **image_10**: Dynamic image inputs that automatically appear as you connect images
-- **user_message_input**: Alternative input for the user message, useful for connecting to other nodes
-
-### Outputs:
-
-- **Output**: The text response from the model
-- **image**: An image tensor if the response contains a generated image
-- **Stats**: Token usage statistics (TPS, prompt tokens, completion tokens, temperature, model)
-
-## Examples
-
-### Image Generation
-
-1. Set a system prompt
-2. Enter a generation prompt (e.g., "Generate a beautiful sunset over mountains")
-3. Enable the "image_generation" option
-4. Select an image-capable model (e.g., "gemini-2.5-flash-image")
+### Banana Gemini Gen Node
+1. In ComfyUI, find the "Banana" category and add the "Banana Gemini Gen" node
+2. Connect input image(s)
+3. Set the prompt (describe the image you want to generate)
+4. Choose the output aspect ratio
 5. Run the workflow
-6. The generated image will appear in the "image" output
 
-### Image Edit
-
-1. Connect an image output from another node to the "image_1" input
-2. Set a system prompt describing the edit style
-3. Enter an edit prompt (e.g., "Change the sky to purple and add clouds")
-4. Enable the "image_generation" option
-5. Select an image-capable model
+### Banana Ratio Adjuster Node
+1. In ComfyUI, find the "Banana Node/Ratio" category and add the "Banana Ratio Adjuster" node
+2. Connect input image(s)
+3. Choose target ratio (1:1, 4:3, 16:9 or custom)
+4. Choose adjustment method:
+   - crop: crop the image to match the target ratio
+   - pad: pad the image to match the target ratio
+   - stretch: stretch the image to match the target ratio
+5. If pad mode is selected, set the padding color
 6. Run the workflow
-7. The edited image will appear in the "image" output
 
-### Image Combine
+### Banana Resolution Scaler Node
+1. In ComfyUI, find the "Banana Node/Ratio" category and add the "Banana Resolution Scaler" node
+2. Connect input image(s)
+3. Choose target resolution (1K, 2K, 4K, 8K or custom)
+4. Choose whether to maintain aspect ratio
+5. Run the workflow
 
-1. Connect multiple image outputs to "image_1", "image_2", etc.
-2. Set a system prompt describing how to combine the images
-3. Enter a combination prompt (e.g., "Merge these images into a single cohesive composition")
-4. Enable the "image_generation" option
-5. Select an image-capable model
-6. Run the workflow
-7. The combined image will appear in the "image" output
+## Input Parameters
 
-### Chat Mode
+### Banana Gemini Gen Node
+- model: model selection (currently supports gemini-2.5-flash-image & gemini-3-pro-image-preview)
+- prompt: text prompt describing the image you want to generate
+- size: output image aspect ratio
+- input_image: input image (required)
 
-Chat Mode allows you to maintain conversation context across multiple messages:
+### Banana Ratio Adjuster Node
+- image: input image
+- target_ratio: target ratio (1:1, 4:3, 16:9 or custom)
+- resize_method: adjustment method (crop, pad, stretch)
+- custom_width: custom width ratio (when using custom ratio)
+- custom_height: custom height ratio (when using custom ratio)
+- pad_color_r/g/b: RGB values of the padding color (when using pad)
 
-1. **Enable Chat Mode**: Toggle "chat_mode" to True
-2. **Automatic Session Management**: 
-   - Sessions are created automatically when you start a conversation
-   - Continue the same session if sending messages within 1 hour
-   - After 1 hour of inactivity, a new session is created
-3. **Session Storage**: Conversations are stored in a `chats` folder with timestamps
+### Banana Resolution Scaler Node
+- image: input image
+- target_resolution: target resolution (1K, 2K, 4K, 8K, custom)
+- maintain_ratio: whether to maintain aspect ratio
+- custom_size: custom size (when using custom resolution)
 
-#### Managing Chat Sessions:
+## Output
 
-Use the included `manage_chats.py` utility:
+### Banana Gemini Gen Node
+- image: generated image
+- revised_prompt: revised prompt (currently N/A)
+- image_url: image URL (currently N/A)
 
-```bash
-# List all chat sessions
-python manage_chats.py list
+### Banana Ratio Adjuster Node
+- image: adjusted image
+- width: output image width
+- height: output image height
+- ratio: final aspect ratio
 
-# View a specific session
-python manage_chats.py view session_name
+### Banana Resolution Scaler Node
+- image: scaled image
+- width: output image width
+- height: output image height
 
-# Export a session to different formats (json, txt, md)
-python manage_chats.py export session_name -f md -o output.md
+## Notes
 
-# Clean up old sessions
-python manage_chats.py clean -d 30
-```
-
-## Configuration
-
-### Environment Variables
-
-- `VERTEX_AI_API_KEY`: Your Vertex API key (required)
-- `VERTEX_AI_USE_SIMPLE_ENDPOINT`: Set to `true` for own proxy
-- `VERTEX_AI_ENDPOINT`: Your Vertex AI endpoint URL (only activated for simple endpoint)
-- `VERTEX_AI_MODELS`: Comma-separated list of available models
-- `VERTEX_AI_PROJECT`: Google Cloud project ID (only for direct Vertex AI access)
-- `VERTEX_AI_LOCATION`: Google Cloud region (only for direct Vertex AI access)
-
-### Supported Models
-
-Configure your available models in the `.env` file. Common Gemini models include:
-- `gemini-2.5-flash-image` - Fast image generation and understanding
-- `gemini-3-pro-image-preview` - Advanced image capabilities
-- Other Gemini models as supported by your Vertex AI instance
+- A valid Google AI API key is required
+- Ensure your network connection is stable
+- API calls may incur costs; please check Google AI pricing
 
 ## Troubleshooting
 
-- **Connection errors**: Verify your `VERTEX_AI_ENDPOINT` and `VERTEX_AI_API_KEY` in `.env`
-- **Model not available**: Check that the model is included in `VERTEX_AI_MODELS`
-- **Image generation not working**: Ensure you've enabled `image_generation` and are using a compatible model
-- **Chat mode issues**: Check that the `chats` folder has write permissions
+1. API key error:
+   - Verify that the API key is correct
+   - Ensure the API key has sufficient permissions and quota
+
+3. Dependency errors:
+   - Ensure all required Python packages are installed
+   - Try reinstalling dependencies
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License
 
-## Credits
+## Contributing
 
-- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - The amazing ComfyUI framework
-- @gabe-init – Original OpenRouter node design that inspired the dynamic input and node structure
+Issues and pull requests are welcome!
+
+## Changelog
+
+### v1.1.0
+- Added Image Ratio Adjuster node (Banana Ratio Adjuster)
+- Added Resolution Scaler node (Banana Resolution Scaler)
+- Supports multiple ratio adjustment methods (crop, pad, stretch)
+- Supports 1K, 2K, 4K, 8K resolution scaling
+- Enhanced ratio calculation and image processing utilities
+
+### v1.0.0
+- Initial release
+- Supports Gemini 2.5 Flash Image Preview API
+- Basic image generation features

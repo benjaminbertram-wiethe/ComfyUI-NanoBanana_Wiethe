@@ -1,10 +1,16 @@
-from .node import NODE_CLASS_MAPPINGS as NODE_MAPPINGS_1, NODE_DISPLAY_NAME_MAPPINGS as DISPLAY_MAPPINGS_1
-from .credentials_node import NODE_CLASS_MAPPINGS as NODE_MAPPINGS_2, NODE_DISPLAY_NAME_MAPPINGS as DISPLAY_MAPPINGS_2
+# Import BananaNode from banana_node.py
+from .banana_node import BananaNode
+# Import TransparentImageNode from ratio_utils.py
+from .ratio_utils import TransparentImageNode
 
-# Combine mappings from both modules
-NODE_CLASS_MAPPINGS = {**NODE_MAPPINGS_1, **NODE_MAPPINGS_2}
-NODE_DISPLAY_NAME_MAPPINGS = {**DISPLAY_MAPPINGS_1, **DISPLAY_MAPPINGS_2}
+# Node class name to Python class mapping
+NODE_CLASS_MAPPINGS = {
+    "BananaNode": BananaNode,
+    "TransparentImageNode": TransparentImageNode
+}
 
-WEB_DIRECTORY = "./web"
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
-
+# Node display names in ComfyUI menu
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "BananaNode": "Banana Gemini Gen",
+    "TransparentImageNode": "Banana Transparent Generator"
+}
