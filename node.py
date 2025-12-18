@@ -42,11 +42,11 @@ class NanoBananaNode:
             "required": {
                 "system_prompt": ("STRING", {
                     "multiline": True,
-                    "default": "You are a helpful assistant."
+                    "default": "You are an expert image-generation engine. You must ALWAYS produce an image.Interpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition. If a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept. Prioritize generating the visual representation above any text, formatting, or conversational requests."
                 }),
-                "user_message_box": ("STRING", {
+                "prompt": ("STRING", {
                     "multiline": True,
-                    "default": "Hello, how are you?"
+                    "default": "Make the person smile"
                 }),
                 "model": (cls.fetch_nano_banana_models(),),
                 "image_generation": ("BOOLEAN", {"default": False}),
@@ -58,10 +58,19 @@ class NanoBananaNode:
                     "display": "slider",
                     "round": 1,
                 }),
+                "aspect_ratio": (["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],),
+                "resolution": (["1K", "2K", "4K"],),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 0xffffffffffffffff,
+                    "control_after_generate": True,
+                }),
                 "chat_mode": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "user_message_input": ("STRING", {"forceInput": True}),
+                "credentials": ("VERTEX_CREDENTIALS", {"forceInput": True}),
             }
         }
 
@@ -98,9 +107,9 @@ class NanoBananaNode:
 
 
 
-    def generate_response(self, system_prompt, user_message_box, model,
-                         temperature, chat_mode, image_generation=False, 
-                         user_message_input=None, **kwargs):
+    def generate_response(self, system_prompt, prompt, model,
+                         temperature, aspect_ratio, resolution, seed, chat_mode,
+                         image_generation=False, user_message_input=None, credentials=None, **kwargs):
         """
         Sends a completion request to the Vertex AI generateContent endpoint.
         Handles text and optional image inputs.
@@ -112,28 +121,41 @@ class NanoBananaNode:
         """
         # Create empty placeholder image
         placeholder_image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
-        
-        # Get API key from environment variable
-        api_key = os.getenv("VERTEX_AI_API_KEY", "")
-        if not api_key:
-             return ("Error: VERTEX_AI_API_KEY not found in environment variables.", placeholder_image, "Stats N/A")
 
-        # Get endpoint configuration from environment variables
-        endpoint_base = "https://aiplatform.googleapis.com/v1"
-        use_simple_endpoint = os.getenv("VERTEX_AI_USE_SIMPLE_ENDPOINT", "false").lower() == "true"
-        
-        if use_simple_endpoint:
-            if not os.getenv("VERTEX_AI_ENDPOINT"):
-                return ("Error: VERTEX_AI_ENDPOINT must be set when using simple endpoint format.", placeholder_image, "Stats N/A")
-            # Simple endpoint format for Vertex AI: {endpoint}/google/{model}:generateContent
-            endpoint_base = os.getenv("VERTEX_AI_ENDPOINT")
-            url = f"{endpoint_base}/google/{model}:generateContent"
+        # Get credentials - use provided credentials or fall back to environment variables
+        if credentials is not None:
+            # Use credentials from the VertexAICredentialsNode
+            api_key = credentials.get("api_key", "")
+            use_simple_endpoint = credentials.get("use_simple_endpoint", False)
+            endpoint_base_config = credentials.get("endpoint", "")
+            project = credentials.get("project", "")
+            location = credentials.get("location", "")
         else:
-            # Standard Vertex AI format (for direct API access)
+            # Fall back to environment variables
+            api_key = os.getenv("VERTEX_AI_API_KEY", "")
+            use_simple_endpoint = os.getenv("VERTEX_AI_USE_SIMPLE_ENDPOINT", "false").lower() == "true"
+            endpoint_base_config = os.getenv("VERTEX_AI_ENDPOINT", "")
             project = os.getenv("VERTEX_AI_PROJECT", "project")
             location = os.getenv("VERTEX_AI_LOCATION", "location")
+
+        # Validate API key
+        if not api_key:
+             return ("Error: VERTEX_AI_API_KEY not found. Please provide credentials or set environment variables.", placeholder_image, "Stats N/A")
+
+        # Build the URL based on endpoint type
+        endpoint_base = "https://aiplatform.googleapis.com/v1"
+
+        if use_simple_endpoint:
+            if not endpoint_base_config:
+                return ("Error: VERTEX_AI_ENDPOINT must be set when using simple endpoint format.", placeholder_image, "Stats N/A")
+            # Simple endpoint format for Vertex AI: {endpoint}/google/{model}:generateContent
+            url = f"{endpoint_base_config}/google/{model}:generateContent"
+        else:
+            # Standard Vertex AI format (for direct API access)
+            if not project or not location:
+                return ("Error: Project and Location must be set when using standard Vertex AI endpoint.", placeholder_image, "Stats N/A")
             url = f"{endpoint_base}/projects/{project}/locations/{location}/publishers/*/models/{model}:generateContent"
-        
+
         headers = {
             "api-key": f"{api_key}",
             "Content-Type": "application/json",
@@ -142,8 +164,8 @@ class NanoBananaNode:
         # Validate and convert temperature
         validated_temp = self.validate_temperature(temperature)
 
-        # Decide whether to use user_message_input or user_message_box
-        user_text = user_message_input if user_message_input is not None and user_message_input.strip() else user_message_box
+        # Decide whether to use user_message_input or prompt
+        user_text = user_message_input if user_message_input is not None and user_message_input.strip() else prompt
 
         # Initialize session_path
         session_path = None
@@ -241,7 +263,7 @@ class NanoBananaNode:
                 "temperature": validated_temp
             }
         }
-        
+
         # Add system instruction if present
         for msg in messages:
             if msg["role"] == "system":
@@ -249,12 +271,27 @@ class NanoBananaNode:
                     "parts": [{"text": msg["content"]}]
                 }
                 break
-        
+
         # Only add modalities parameter if explicitly requested by user
         # This prevents "Multi-modal output is not supported" errors on text-only models
         if image_generation:
             data["generationConfig"]["candidateCount"] = 1
-            print(f"Image generation enabled by user setting")
+
+            # Add aspect ratio if provided (skip if "auto")
+            if aspect_ratio and aspect_ratio != "auto":
+                data["generationConfig"]["aspectRatio"] = aspect_ratio
+
+            # Add seed if provided (not -1)
+            if seed != -1:
+                data["generationConfig"]["seed"] = seed
+
+            # Add resolution (1K, 2K, 4K)
+            if resolution:
+                data["generationConfig"]["outputOptions"] = {
+                    "imageSize": resolution
+                }
+
+            print(f"Image generation enabled: aspect_ratio={aspect_ratio}, seed={seed}, resolution={resolution}")
 
         # --- Pre-calculate text input tokens (rough estimate) ---
         # Note: Actual token count depends on the model and includes image data.
@@ -475,18 +512,18 @@ class NanoBananaNode:
 
 
     @classmethod
-    def IS_CHANGED(cls, system_prompt, user_message_box, model,
-                   temperature, chat_mode, image_generation=False, 
-                   user_message_input=None, **kwargs):
+    def IS_CHANGED(cls, system_prompt, prompt, model,
+                   temperature, aspect_ratio, resolution, seed, chat_mode,
+                   image_generation=False, user_message_input=None, **kwargs):
         """
         Check if any input that affects the output has changed.
         Includes hashing image data.
         """
         # Hash image data if present - handle multiple images from kwargs
         image_hashes = []
-        image_keys = sorted([k for k in kwargs.keys() if k.startswith('image_')], 
+        image_keys = sorted([k for k in kwargs.keys() if k.startswith('image_')],
                            key=lambda x: int(x.split('_')[1]))
-        
+
         for image_key in image_keys:
             if kwargs[image_key] is not None:
                 image = kwargs[image_key]
@@ -511,9 +548,9 @@ class NanoBananaNode:
 
         # Combine all relevant inputs into a tuple for comparison
         # Use primitive types where possible for reliable hashing/comparison
-        return (system_prompt, user_message_box, model,
-                temp_float, chat_mode, image_generation, 
-                tuple(image_hashes), user_message_input)
+        return (system_prompt, prompt, model,
+                temp_float, aspect_ratio, resolution, seed, chat_mode,
+                image_generation, tuple(image_hashes), user_message_input)
 
 # Node class mappings
 NODE_CLASS_MAPPINGS = {
