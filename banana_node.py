@@ -9,11 +9,60 @@ import time
 import requests
 import re
 import random
+import json
 
 # --- Logging Configuration ---
 # We place logger acquisition in the class methods to ensure correct scope
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - BananaNode - %(levelname)s - %(message)s')
 # logger = logging.getLogger(__name__)
+
+
+def get_vertex_ai_token(service_account_json_path: str) -> str:
+    """
+    Get an OAuth2 access token for Vertex AI using a service account JSON file.
+    Uses the google-auth library if available, otherwise falls back to manual JWT creation.
+    """
+    try:
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import Request
+
+        credentials = service_account.Credentials.from_service_account_file(
+            service_account_json_path,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        credentials.refresh(Request())
+        return credentials.token
+    except ImportError:
+        # Fallback: manual JWT creation if google-auth is not installed
+        import jwt
+        import time as time_module
+
+        with open(service_account_json_path, 'r') as f:
+            sa_info = json.load(f)
+
+        now = int(time_module.time())
+        payload = {
+            "iss": sa_info["client_email"],
+            "sub": sa_info["client_email"],
+            "aud": "https://oauth2.googleapis.com/token",
+            "iat": now,
+            "exp": now + 3600,
+            "scope": "https://www.googleapis.com/auth/cloud-platform"
+        }
+
+        # Create signed JWT
+        signed_jwt = jwt.encode(payload, sa_info["private_key"], algorithm="RS256")
+
+        # Exchange JWT for access token
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": signed_jwt
+            }
+        )
+        token_response.raise_for_status()
+        return token_response.json()["access_token"]
 
 
 # --- Helper functions for Image Conversion ---
@@ -45,8 +94,8 @@ def pil2tensor(images: list[Image.Image]) -> torch.Tensor:
 
 class BananaNode:
     """
-    ComfyUI node for image generation using Google Gemini API.
-    Requires API key input directly in the node.
+    ComfyUI node for image generation using Google Vertex AI Gemini API.
+    Requires Vertex AI credentials (service account JSON, project ID, region).
     """
 
     def add_random_variation(self, prompt, seed=0):
@@ -77,10 +126,29 @@ class BananaNode:
                     "control_after_generate": True,
                     "tooltip": "Random seed, changing this value forces content regeneration"
                 }),
-                "api_key": ("STRING", {"multiline": False, "default": ""}),
+                "service_account_json": ("STRING", {
+                    "multiline": False,
+                    "default": "",
+                    "tooltip": "Path to Google Cloud service account JSON file with Vertex AI User role"
+                }),
+                "project_id": ("STRING", {
+                    "multiline": False,
+                    "default": "",
+                    "tooltip": "Google Cloud Project ID (e.g., my-project-123)"
+                }),
+                "region": ([
+                    "global",
+                    "us-central1", "us-east1", "us-east4", "us-east5", "us-south1", "us-west1", "us-west4",
+                    "europe-west1", "europe-west4",
+                    "northamerica-northeast1",
+                    "southamerica-east1",
+                    "asia-northeast1", "asia-southeast1", "asia-east1", "asia-east2", "asia-south1", "australia-southeast1"
+                ], {
+                    "default": "global",
+                    "tooltip": "Vertex AI region/location. Note: Gemini image generation models are NOT available in europe-west2, europe-west3, europe-west6, etc. Use 'global', 'europe-west1', or 'europe-west4' for Europe."
+                }),
             },
             "optional": {
-                "base_url": ("STRING", {"multiline": False, "default": ""}),
                 "image1": ("IMAGE",),
                 "image2": ("IMAGE",),
                 "image3": ("IMAGE",),
@@ -103,7 +171,8 @@ class BananaNode:
     FUNCTION = "generate"
     CATEGORY = "Banana"
 
-    def generate(self, model: str, prompt: str, aspect_ratio: str, resolution: str, seed: int = 0, api_key: str = "", base_url: str = "",
+    def generate(self, model: str, prompt: str, aspect_ratio: str, resolution: str, seed: int = 0,
+                 service_account_json: str = "", project_id: str = "", region: str = "us-central1",
                  image1: torch.Tensor = None, image2: torch.Tensor = None, image3: torch.Tensor = None, image4: torch.Tensor = None,
                  image5: torch.Tensor = None, image6: torch.Tensor = None, image7: torch.Tensor = None, image8: torch.Tensor = None,
                  image9: torch.Tensor = None, image10: torch.Tensor = None, image11: torch.Tensor = None, image12: torch.Tensor = None,
@@ -116,10 +185,24 @@ class BananaNode:
         varied_prompt = self.add_random_variation(prompt, seed)
         logger.info(f"Random seed: {seed}")
 
-        # Validate API key
-        api_key = api_key.strip() if api_key else ""
-        if not api_key:
-            raise ValueError("Google AI API Key is required. Please enter your API key in the node.")
+        # Validate Vertex AI credentials
+        service_account_json = service_account_json.strip() if service_account_json else ""
+        project_id = project_id.strip() if project_id else ""
+
+        if not service_account_json:
+            raise ValueError("Service Account JSON path is required. Please provide the path to your Google Cloud service account JSON file.")
+        if not project_id:
+            raise ValueError("Project ID is required. Please provide your Google Cloud Project ID.")
+        if not os.path.exists(service_account_json):
+            raise ValueError(f"Service Account JSON file not found: {service_account_json}")
+
+        # Get OAuth2 access token from service account
+        logger.info("Obtaining Vertex AI access token...")
+        try:
+            access_token = get_vertex_ai_token(service_account_json)
+            logger.info("Successfully obtained access token")
+        except Exception as e:
+            raise ValueError(f"Failed to obtain Vertex AI access token: {e}")
 
         # Set timeout based on resolution
         timeout = 120  # Default 1K/2K: 2 minutes
@@ -137,31 +220,16 @@ class BananaNode:
         except Exception as e:
             raise ValueError(f"Error: Failed to parse image input - {e}")
 
-        # if not aggregated_pil_images:
-        #     raise ValueError("Error: At least one image is required (image1~image4).")
-
         try:
-            # Handle custom endpoint from node input
-            endpoint = (base_url or '').strip()
-            if endpoint.endswith('/'):
-                endpoint = endpoint[:-1]
-
-            # Consistent with Gemini_Pro_Node: expose endpoint via environment variable for potential subprocesses
-            if endpoint:
-                os.environ['GENAI_API_ENDPOINT'] = endpoint
+            # ========== Vertex AI REST API ==========
+            # Vertex AI endpoint format:
+            # Regional: https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/{REGION}/publishers/google/models/{MODEL}:generateContent
+            # Global: https://aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/global/publishers/google/models/{MODEL}:generateContent
+            if region == "global":
+                url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/global/publishers/google/models/{model}:generateContent"
             else:
-                if 'GENAI_API_ENDPOINT' in os.environ:
-                    del os.environ['GENAI_API_ENDPOINT']
-
-            # ========== Using REST API calls instead of SDK ==========
-            # Assemble base address (use official default if empty)
-            base = endpoint if endpoint else "https://generativelanguage.googleapis.com"
-            if base.endswith('/'):
-                base = base[:-1]
-
-            # Path requires models/<model>:generateContent
-            model_path = model if isinstance(model, str) and model.startswith('models/') else f"models/{model}"
-            url = f"{base}/v1beta/{model_path}:generateContent"
+                url = f"https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/google/models/{model}:generateContent"
+            logger.info(f"Vertex AI endpoint: {url}")
 
             # Log input statistics
             batch_size = len(aggregated_pil_images)
@@ -217,35 +285,35 @@ class BananaNode:
                 "generationConfig": generation_config
             }
 
-            # Use query parameters to pass API Key (official REST supports key=...)
-            params = {"key": api_key}
-
-            # Requests proxy (uses environment variables if set)
-            req_proxies = None
+            # Vertex AI uses OAuth2 Bearer token authentication
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
 
             response_data = None
             last_error = "Unknown error"
             max_retries = 2
             for attempt in range(max_retries):
                 try:
-                    logger.info(f"[Banana|REST] Attempting API call {attempt + 1}/{max_retries}...")
+                    logger.info(f"[Banana|VertexAI] Attempting API call {attempt + 1}/{max_retries}...")
                     start_time = time.time()
-                    r = requests.post(url, json=payload, params=params, timeout=timeout, proxies=req_proxies, headers={"Content-Type": "application/json"})
+                    r = requests.post(url, json=payload, timeout=timeout, headers=headers)
                     end_time = time.time()
                     if r.status_code == 200:
                         response_data = r.json()
-                        logger.info(f"[Banana|REST] API call successful, took: {end_time - start_time:.2f} seconds")
+                        logger.info(f"[Banana|VertexAI] API call successful, took: {end_time - start_time:.2f} seconds")
                         break
                     else:
-                        last_error = f"HTTP {r.status_code}: {r.text[:300]}"
-                        logger.warning(f"[Banana|REST] Received non-200 status code: {last_error}")
+                        last_error = f"HTTP {r.status_code}: {r.text[:500]}"
+                        logger.warning(f"[Banana|VertexAI] Received non-200 status code: {last_error}")
                         if attempt < max_retries - 1:
                             time.sleep(1)
                 except Exception as e:
                     last_error = str(e)
-                    logger.warning(f"[Banana|REST] Attempt {attempt + 1} failed: {last_error}")
+                    logger.warning(f"[Banana|VertexAI] Attempt {attempt + 1} failed: {last_error}")
                     if attempt < max_retries - 1:
-                        logger.info("[Banana|REST] Network connection timeout or error, retrying in 1 second...")
+                        logger.info("[Banana|VertexAI] Network connection timeout or error, retrying in 1 second...")
                         time.sleep(1)
 
             if response_data is None:

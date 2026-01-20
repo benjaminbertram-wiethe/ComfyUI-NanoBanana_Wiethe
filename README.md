@@ -1,21 +1,18 @@
 # ComfyUI-Banana-Node
 
-A custom node for ComfyUI that uses Google's Gemini 2.5 Flash Image and Gemini 3 Pro Image Preview APIs to generate images.
+A custom node for ComfyUI that uses Google's Vertex AI Gemini models to generate images.
 
-New: Online invocation
-[Invincible banana2 🍌 0.2/image](https://www.runninghub.ai/post/1991513043091857410/?inviteCode=rh-v1118)
-[Tutorial](https://www.bilibili.com/video/BV1ByU5BbEqS/?share_source=copy_web&vd_source=e82febcd63de4c3684cb2d737bbe5050)
-
-- Supports resolution scaling for 1K, 2K, 4K, 8K, etc.
 ## Features
 
-- Uses Google Gemini 2.5 Flash Image Preview model
-- Supports multiple input images
+- Uses Google Vertex AI Gemini models (gemini-2.5-flash-preview-image-generation, gemini-2.0-flash-exp)
+- **Vertex AI authentication** with service account JSON
+- Supports multiple input images (up to 14)
 - Customizable prompts
 - Multiple output aspect ratios
+- Resolution options: 1K, 2K, 4K
 - Complete error handling and logging
-- New: Image Ratio Adjuster node — supports crop, pad, stretch
-- New: Resolution Scaler node — supports 1K, 2K, 4K, 8K resolution scaling
+- Image Ratio Adjuster node — supports crop, pad, stretch
+- Resolution Scaler node — supports 1K, 2K, 4K, 8K resolution scaling
 
 ## Installation
 
@@ -28,12 +25,14 @@ git clone https://github.com/your-username/ComfyUI-Banana-Node.git
 2. Install dependencies:
 ```bash
 cd ComfyUI-Banana-Node
-pip install google-generativeai pillow numpy torch
+pip install google-auth google-auth-httplib2 pillow numpy torch requests
 ```
 
-3. Get your API key:
-- Visit Google AI Studio: https://aistudio.google.com/app/apikey
-- Bind a Visa or MasterCard to receive $300 in free credits
+3. Set up Vertex AI credentials:
+   - Create a Google Cloud project with Vertex AI API enabled
+   - Create a Service Account with the **"Vertex AI User"** role (`roles/aiplatform.user`)
+   - Download the Service Account JSON key file
+   - Note your Project ID and preferred region
 
 4. Restart ComfyUI
 
@@ -67,10 +66,15 @@ pip install google-generativeai pillow numpy torch
 ## Input Parameters
 
 ### Banana Gemini Gen Node
-- model: model selection (currently supports gemini-2.5-flash-image & gemini-3-pro-image-preview)
-- prompt: text prompt describing the image you want to generate
-- size: output image aspect ratio
-- input_image: input image (required)
+- **model**: model selection (gemini-2.5-flash-preview-image-generation, gemini-2.0-flash-exp)
+- **prompt**: text prompt describing the image you want to generate
+- **aspect_ratio**: output image aspect ratio (Automatic, 1:1, 2:3, 3:2, etc.)
+- **resolution**: output resolution (1K, 2K, 4K)
+- **seed**: random seed for reproducibility
+- **service_account_json**: path to your Google Cloud service account JSON file
+- **project_id**: your Google Cloud Project ID
+- **region**: Vertex AI region (us-central1, europe-west1, etc.)
+- **image1-14**: input images (optional, up to 14 images)
 
 ### Banana Ratio Adjuster Node
 - image: input image
@@ -106,19 +110,22 @@ pip install google-generativeai pillow numpy torch
 
 ## Notes
 
-- A valid Google AI API key is required
+- A valid Google Cloud service account with Vertex AI User role is required
 - Ensure your network connection is stable
-- API calls may incur costs; please check Google AI pricing
+- API calls may incur costs; please check Google Cloud Vertex AI pricing
 
 ## Troubleshooting
 
-1. API key error:
-   - Verify that the API key is correct
-   - Ensure the API key has sufficient permissions and quota
+1. Authentication error:
+   - Verify that the service account JSON file path is correct
+   - Ensure the service account has the "Vertex AI User" role
+   - Check that the project ID is correct
+
+2. Region error:
+   - Make sure the selected region has Vertex AI and the Gemini model available
 
 3. Dependency errors:
-   - Ensure all required Python packages are installed
-   - Try reinstalling dependencies
+   - Ensure all required Python packages are installed: `pip install google-auth google-auth-httplib2 requests`
 
 ## License
 
