@@ -92,7 +92,7 @@ def pil2tensor(images: list[Image.Image]) -> torch.Tensor:
     return torch.stack(tensors)
 
 
-class BananaNode:
+class BananaNodeVertexAI:
     """
     ComfyUI node for image generation using Google Vertex AI Gemini API.
     Requires Vertex AI credentials (service account JSON, project ID, region).
